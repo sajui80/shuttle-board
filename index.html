@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>퇴근 셔틀 배차현황</title>
+<meta name="theme-color" content="#c2740a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="퇴근셔틀">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<!-- Firebase (무료 플랜으로 충분합니다) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+  // ▼▼▼ Firebase 콘솔에서 복사한 본인 프로젝트 설정값으로 반드시 교체하세요 ▼▼▼
+  const firebaseConfig = {
+    apiKey: "AIzaSyA3m70FBaTGl9XLbOUfwPVLgtLwqpY3piM",
+    authDomain: "shuttle-board.firebaseapp.com",
+    projectId: "shuttle-board",
+    storageBucket: "shuttle-board.firebasestorage.app",
+    messagingSenderId: "920392719136",
+    appId: "1:920392719136:web:c54b536b1b7f525b78d545"
+  };
+  // ▲▲▲ 여기까지 ▲▲▲
+  firebase.initializeApp(firebaseConfig);
+</script>
+</head>
+<body style="margin:0; background:#f5f7fa;">
+<style>
+  :root{
+    --bg:#f5f7fa;
+    --panel:#ffffff;
+    --panel-2:#eef1f6;
+    --line:#dde2ea;
+    --text:#1b2130;
+    --muted:#6b7382;
+    --amber:#c2740a;
+    --green:#15803d;
+    --rose:#e11d48;
+  }
+  *{box-sizing:border-box;}
+  .board{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    padding:28px 20px 40px;
+    border:1px solid var(--line);
+    border-radius:16px;
+    min-height:520px;
+  }
+  .notice{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    background:rgba(194,116,10,0.10);
+    border:1px solid rgba(194,116,10,0.30);
+    color:var(--amber);
+    font-size:13px;
+    font-weight:600;
+    padding:10px 14px;
+    border-radius:10px;
+    margin-bottom:18px;
+  }
+  .head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:12px;
+    margin-bottom:22px;
+    border-bottom:1px solid var(--line);
+    padding-bottom:18px;
+  }
+  .head h1{
+    margin:0;
+    font-size:20px;
+    letter-spacing:0.02em;
+    font-weight:700;
+  }
+  .head .sub{
+    color:var(--text);
+    font-size:22px;
+    font-weight:800;
+    margin-top:8px;
+    font-variant-numeric:tabular-nums;
+    letter-spacing:0.01em;
+  }
+  .stat{
+    text-align:right;
+    min-width:150px;
+  }
+  .stat .num{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:26px;
+    color:var(--amber);
+    font-weight:700;
+    letter-spacing:0.02em;
+  }
+  .stat .label{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:2px;
+  }
+  .progress-wrap{
+    width:150px;
+    height:6px;
+    background:var(--panel-2);
+    border-radius:4px;
+    margin-top:8px;
+    overflow:hidden;
+  }
+  .progress-bar{
+    height:100%;
+    background:var(--amber);
+    border-radius:4px;
+    transition:width .3s ease;
+  }
+  .progress-bar.done{ background:var(--green); }
+  .reset-btn{
+    background:none;
+    border:1px solid var(--line);
+    color:var(--muted);
+    font-size:12px;
+    padding:7px 12px;
+    border-radius:8px;
+    cursor:pointer;
+    margin-left:12px;
+    white-space:nowrap;
+  }
+  .reset-btn:hover{ border-color:var(--rose); color:var(--rose); }
+
+  .section-label{
+    font-size:12px;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    margin:0 0 10px 2px;
+    font-weight:700;
+  }
+
+  .nonuser-card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:16px;
+    margin-bottom:22px;
+  }
+  .nonuser-list{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin-bottom:12px;
+  }
+  .nonuser-chip{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    padding:6px 8px 6px 12px;
+    border-radius:20px;
+    font-size:13px;
+  }
+  .nonuser-chip .reason{
+    font-size:11px;
+    font-weight:700;
+    padding:2px 7px;
+    border-radius:10px;
+  }
+  .nonuser-chip .range{
+    color:var(--muted);
+    font-size:11px;
+  }
+  .nonuser-chip button{
+    background:none;
+    border:none;
+    color:var(--muted);
+    cursor:pointer;
+    font-size:14px;
+    padding:0 2px;
+  }
+  .nonuser-chip button:hover{ color:var(--rose); }
+  .confirm-bar{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    background:rgba(225,29,72,0.07);
+    border:1px solid rgba(225,29,72,0.35);
+    color:#9f1239;
+    font-size:13px;
+    font-weight:600;
+    padding:12px 14px;
+    border-radius:10px;
+    margin-bottom:22px;
+  }
+  .confirm-bar span{ flex:1; min-width:180px; }
+  .confirm-bar button{
+    border-radius:8px;
+    padding:7px 14px;
+    font-size:12.5px;
+    font-weight:700;
+    cursor:pointer;
+    flex-shrink:0;
+  }
+  .confirm-yes{
+    background:var(--rose);
+    border:1px solid var(--rose);
+    color:#fff;
+  }
+  .confirm-no{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--muted);
+  }
+  .nonuser-chip.confirming{
+    background:rgba(225,29,72,0.07);
+    border-color:rgba(225,29,72,0.35);
+    color:#9f1239;
+    font-weight:600;
+    padding-right:6px;
+  }
+  .nonuser-chip .chip-yes,
+  .nonuser-chip .chip-no{
+    border-radius:12px;
+    padding:3px 10px;
+    font-size:11.5px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .nonuser-chip .chip-yes{
+    background:var(--rose);
+    border:1px solid var(--rose);
+    color:#fff;
+  }
+  .nonuser-chip .chip-yes:hover{ color:#fff; }
+  .nonuser-chip .chip-no{
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--muted);
+  }
+  .nonuser-empty{
+    color:var(--muted);
+    font-size:12px;
+    margin-bottom:12px;
+  }
+  .nonuser-add{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  .nonuser-add select, .nonuser-add input{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:8px;
+    padding:8px 9px;
+    font-size:13px;
+  }
+  .nonuser-add input#nonuserName{ flex:1; min-width:130px; }
+  .nonuser-add .date-field{
+    display:flex;
+    align-items:center;
+    gap:4px;
+    font-size:11px;
+    color:var(--muted);
+  }
+  .nonuser-add button{
+    background:var(--panel-2);
+    border:1px solid var(--amber);
+    color:var(--amber);
+    border-radius:8px;
+    padding:0 14px;
+    font-weight:700;
+    font-size:13px;
+    cursor:pointer;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(2,1fr);
+    gap:16px;
+  }
+  @media (max-width:640px){
+    .grid{ grid-template-columns:1fr; }
+    .board{ padding:18px 12px 30px; }
+    .head{ align-items:flex-start; }
+    .head h1{ font-size:17px; }
+    .head .sub{ font-size:19px; }
+    .head > div:last-child{ width:100%; flex-wrap:wrap; gap:8px; }
+    .stat{ text-align:left; flex-basis:100%; }
+    .progress-wrap{ width:100%; }
+    .reset-btn{ margin-left:0; flex:1; }
+    .nonuser-add input, .nonuser-add select, .nonuser-add button{
+      font-size:16px; padding:10px;
+    }
+    .nonuser-add input#nonuserName{ flex-basis:100%; }
+    .nonuser-add button{ flex:1; }
+    .add-row input{ font-size:16px; padding:10px; }
+    .add-row button{ padding:0 18px; }
+    .car-memo{ font-size:16px; }
+    .status-panel-row{ flex-direction:column; gap:4px; }
+    .status-panel-slot{ width:auto; }
+    .plist li{ padding:10px; font-size:14px; }
+    .seat{ width:20px; height:20px; }
+  }
+
+  .car{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:16px;
+    display:flex;
+    flex-direction:column;
+  }
+  .car-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    margin-bottom:4px;
+  }
+  .car-name{
+    font-weight:700;
+    font-size:15px;
+    letter-spacing:0.01em;
+  }
+  .car-time{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--amber);
+    font-size:23px;
+    font-weight:800;
+    letter-spacing:0.01em;
+  }
+  .car-driver{
+    color:var(--muted);
+    font-size:13px;
+    margin-bottom:10px;
+  }
+  .car-driver b{ color:var(--text); font-weight:800; font-size:17px; }
+  .car-memo-badges{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    margin-bottom:10px;
+  }
+  .car-memo-badge{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:8px;
+    background:rgba(37,99,235,0.08);
+    border:1px solid rgba(37,99,235,0.28);
+    color:#1d4ed8;
+    border-radius:8px;
+    padding:6px 9px;
+    font-size:12px;
+    line-height:1.4;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .memo-del-btn{
+    background:none;
+    border:none;
+    color:#6b8fd4;
+    cursor:pointer;
+    font-size:13px;
+    line-height:1;
+    padding:0 2px;
+    flex-shrink:0;
+  }
+  .memo-del-btn:hover{ color:var(--rose); }
+  .memo-row{
+    display:flex;
+    align-items:stretch;
+    gap:6px;
+  }
+  .memo-row .car-memo{
+    flex:1;
+    min-width:0;
+    margin-top:0;
+  }
+  .memo-done-btn{
+    background:none;
+    border:1px solid rgba(37,99,235,0.4);
+    color:#1d4ed8;
+    border-radius:8px;
+    padding:0 10px;
+    font-size:11.5px;
+    font-weight:700;
+    cursor:pointer;
+    flex-shrink:0;
+    white-space:nowrap;
+  }
+  .memo-done-btn:hover{ background:rgba(37,99,235,0.08); }
+
+  .seats-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    margin-bottom:12px;
+  }
+  .seats{
+    display:flex;
+    gap:4px;
+    flex-wrap:wrap;
+  }
+  .seat{
+    width:16px;
+    height:16px;
+    border-radius:4px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+  }
+  .seat.filled{ background:var(--amber); border-color:var(--amber); }
+  .seat.full{ background:var(--rose); border-color:var(--rose); }
+
+  .status-line{
+    font-size:12px;
+    color:var(--muted);
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+    flex-shrink:0;
+  }
+  .status-line.ok{ color:var(--green); }
+  .status-line.full{ color:var(--rose); }
+
+  .plist{
+    list-style:none;
+    margin:0 0 12px 0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    min-height:8px;
+  }
+  .plist li{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background:var(--panel-2);
+    padding:7px 10px;
+    border-radius:8px;
+    font-size:13px;
+    gap:8px;
+  }
+  .plist .pname{ flex:1; min-width:0; }
+  .plist .pnum{
+    color:var(--amber);
+    font-weight:700;
+    margin-right:6px;
+  }
+  .plist button{
+    background:none;
+    border:none;
+    color:var(--muted);
+    cursor:pointer;
+    font-size:14px;
+    line-height:1;
+    padding:2px 4px;
+    flex-shrink:0;
+  }
+  .plist button:hover{ color:var(--rose); }
+  .empty-row{
+    color:var(--muted);
+    font-size:12px;
+    padding:6px 2px;
+  }
+
+  .add-row{
+    display:flex;
+    gap:6px;
+    margin-top:auto;
+  }
+  .add-row select{
+    flex:1;
+    min-width:0;
+  }
+  .add-row select, .add-row input{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    border-radius:8px;
+    padding:8px 9px;
+    font-size:13px;
+  }
+  .add-row button{
+    background:var(--amber);
+    color:#ffffff;
+    border:none;
+    border-radius:8px;
+    padding:0 14px;
+    font-weight:700;
+    font-size:13px;
+    cursor:pointer;
+  }
+  .add-row button:disabled{
+    background:var(--line);
+    color:var(--muted);
+    cursor:not-allowed;
+  }
+
+  .car-memo{
+    background:rgba(37,99,235,0.05);
+    border:1px solid rgba(37,99,235,0.25);
+    color:#1b2130;
+    border-radius:8px;
+    padding:8px 10px;
+    font-size:12px;
+    margin-top:10px;
+    resize:vertical;
+    min-height:40px;
+    font-family:inherit;
+  }
+  .car-memo::placeholder{ color:#6b8fd4; }
+  .car-memo-label{
+    font-size:10.5px;
+    color:#6b8fd4;
+    font-weight:700;
+    margin-top:12px;
+    margin-bottom:4px;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+  }
+  .foot-note{
+    text-align:center;
+    color:var(--muted);
+    font-size:11px;
+    margin-top:18px;
+  }
+  .loading{
+    color:var(--muted);
+    font-size:13px;
+    padding:40px 0;
+    text-align:center;
+  }
+
+  .summary-card{
+    background:var(--panel);
+    border:1px solid var(--amber);
+    border-radius:14px;
+    padding:18px;
+    margin-top:26px;
+  }
+  .summary-title{
+    font-size:14px;
+    font-weight:700;
+    color:var(--amber);
+    margin-bottom:14px;
+  }
+  .summary-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:8px;
+    font-size:12.5px;
+  }
+  .summary-row .s-label{
+    width:100px;
+    flex-shrink:0;
+    color:var(--muted);
+  }
+  .summary-row .s-bar-wrap{
+    flex:1;
+    height:8px;
+    background:var(--panel-2);
+    border-radius:4px;
+    overflow:hidden;
+  }
+  .summary-row .s-bar{
+    height:100%;
+    background:var(--amber);
+    border-radius:4px;
+  }
+  .summary-row .s-count{
+    width:44px;
+    text-align:right;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--text);
+    flex-shrink:0;
+  }
+  .summary-divider{
+    border:none;
+    border-top:1px solid var(--line);
+    margin:14px 0;
+  }
+  .summary-note{
+    font-size:12px;
+    color:var(--muted);
+  }
+  .status-panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:18px;
+    margin-bottom:22px;
+  }
+  .status-panel-row{
+    display:flex;
+    align-items:baseline;
+    gap:12px;
+    padding:8px 0;
+    border-bottom:1px solid var(--line);
+    font-size:13px;
+  }
+  .status-panel-row:last-child{ border-bottom:none; }
+  .status-panel-slot{
+    width:110px;
+    flex-shrink:0;
+    font-weight:700;
+  }
+  .status-panel-time{
+    color:var(--amber);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+    font-size:11px;
+    font-weight:400;
+  }
+  .status-panel-names{
+    color:var(--text);
+    line-height:1.6;
+  }
+</style>
+
+<div id="root" class="board"><div class="loading">불러오는 중...</div></div>
+
+<script>
+(function(){
+  const root = document.getElementById('root');
+  let data = null;
+  let leaves = [];
+  let statusOpen = false;
+  let pendingConfirm = null; // {type:'reset'} | {type:'leave', id}
+
+  const ROSTER = ['김두환','김병균','김수완','김승용','김지구','김진보','김휴목','민유석','박형배','성경욱','신정훈','윤상근','조규동','정상준','최정갑'];
+
+  const SLOTS = [
+    { idx:0, label:'1호차', time:'17:40' },
+    { idx:1, label:'2호차', time:'18:30' },
+    { idx:2, label:'3호차', time:'19:00' },
+    { idx:3, label:'4호차', time:'20:00' }
+  ];
+  const CAPACITY = 5;
+  const TOTAL_STAFF = 15;
+  const CUTOFF_TIME = '17:00';
+  const DRIVERS_BASE = ['Kaillash','Devender','Tarun','Amit'];
+  const ANCHOR_MONDAY = new Date('2026-07-20T00:00:00');
+  const NONUSE_REASONS = ['출장','휴가','자차 이용','기타'];
+  const REASON_COLORS = {
+    '출장': { bg:'rgba(37,99,235,0.12)', fg:'#1d4ed8' },
+    '휴가': { bg:'rgba(22,163,74,0.13)', fg:'#15803d' },
+    '자차 이용': { bg:'rgba(147,51,234,0.12)', fg:'#7e22ce' },
+    '기타': { bg:'rgba(107,115,130,0.14)', fg:'#4b5563' }
+  };
+  function reasonStyle(reason){
+    const c = REASON_COLORS[reason] || REASON_COLORS['기타'];
+    return `background:${c.bg}; color:${c.fg};`;
+  }
+
+  const db = firebase.firestore();
+  const boardDocRef = db.collection('shuttle').doc('board');
+  const leavesDocRef = db.collection('shuttle').doc('leaves');
+
+  function todayStr(){
+    return new Date().toLocaleDateString('sv-SE');
+  }
+
+  function isPastCutoff(){
+    const now = new Date();
+    const [h,m] = CUTOFF_TIME.split(':').map(Number);
+    return (now.getHours()*60 + now.getMinutes()) >= (h*60+m);
+  }
+
+  function mondayOf(d){
+    const date = new Date(d);
+    const day = date.getDay();
+    const diff = (day === 0 ? -6 : 1 - day);
+    date.setDate(date.getDate() + diff);
+    date.setHours(0,0,0,0);
+    return date;
+  }
+
+  function weeksSinceAnchor(){
+    const thisMonday = mondayOf(new Date());
+    const diffDays = Math.round((thisMonday - ANCHOR_MONDAY) / (24*3600*1000));
+    const weeks = Math.floor(diffDays / 7);
+    return ((weeks % 4) + 4) % 4;
+  }
+
+  function driverForSlot(slotIdx){
+    const w = weeksSinceAnchor();
+    const baseIdx = ((slotIdx - w) % 4 + 4) % 4;
+    return DRIVERS_BASE[baseIdx];
+  }
+
+  function defaultCars(){
+    return SLOTS.map(s => ({ id:s.idx, passengers:[], memos:[] }));
+  }
+  function defaultData(){
+    return { date: todayStr(), cars: defaultCars() };
+  }
+
+  async function loadBoard(){
+    try{
+      const snap = await boardDocRef.get();
+      if(snap.exists){
+        const parsed = snap.data();
+        if(parsed.date !== todayStr()){
+          data = defaultData();
+          await saveBoard();
+        } else {
+          data = parsed;
+          data.cars.forEach(c => {
+            if(!Array.isArray(c.memos)){
+              c.memos = (typeof c.memo === 'string' && c.memo.trim()) ? [{ id:'legacy-'+c.id, text:c.memo.trim() }] : [];
+            }
+            delete c.memo;
+          });
+        }
+      } else {
+        data = defaultData();
+        await saveBoard();
+      }
+    } catch(e){
+      console.error('불러오기 실패', e);
+      data = data || defaultData();
+    }
+  }
+  async function saveBoard(){
+    try{ await boardDocRef.set(data); }
+    catch(e){ console.error('저장 실패', e); }
+  }
+
+  async function loadLeaves(){
+    try{
+      const snap = await leavesDocRef.get();
+      if(snap.exists && Array.isArray(snap.data().leaves)){
+        leaves = snap.data().leaves;
+      } else {
+        leaves = [];
+      }
+    } catch(e){
+      console.error('불러오기 실패', e);
+      leaves = leaves || [];
+    }
+  }
+  async function saveLeaves(){
+    try{ await leavesDocRef.set({ leaves }); }
+    catch(e){ console.error('저장 실패', e); }
+  }
+
+  function todaysNonUsers(){
+    const t = todayStr();
+    return leaves.filter(l => l.start <= t && t <= l.end);
+  }
+
+  async function loadAll(){
+    await Promise.all([loadBoard(), loadLeaves()]);
+    render();
+  }
+
+  function totalBooked(){ return data.cars.reduce((s,c)=>s+c.passengers.length,0); }
+  function totalEntered(){ return totalBooked() + todaysNonUsers().length; }
+
+  function assignedNamesToday(){
+    const set = new Set();
+    data.cars.forEach(c => c.passengers.forEach(p => set.add(p.name)));
+    todaysNonUsers().forEach(n => set.add(n.name));
+    return set;
+  }
+
+  function seatDots(car){
+    let html = '';
+    for(let i=0;i<CAPACITY;i++){
+      if(i < car.passengers.length){
+        html += `<div class="seat ${car.passengers.length>=CAPACITY?'full':'filled'}"></div>`;
+      } else {
+        html += `<div class="seat"></div>`;
+      }
+    }
+    return html;
+  }
+
+  function fmtRange(l){
+    if(l.start === l.end) return '';
+    const s = l.start.slice(5).replace('-','/');
+    const e = l.end.slice(5).replace('-','/');
+    return `${s}~${e}`;
+  }
+
+  // 재렌더링으로 입력 중이던 값이 사라지지 않도록 상태를 저장/복원
+  function captureFormState(){
+    const st = {};
+    data.cars.forEach(car => {
+      const nameSel = document.getElementById('name-'+car.id);
+      const memoInp = document.getElementById('memo-'+car.id);
+      st['name-'+car.id] = nameSel ? nameSel.value : '';
+      st['memo-'+car.id] = memoInp ? memoInp.value : '';
+    });
+    const nuName = document.getElementById('nonuserName');
+    const nuReason = document.getElementById('nonuserReason');
+    const nuStart = document.getElementById('nonuserStart');
+    const nuEnd = document.getElementById('nonuserEnd');
+    st.nuName = nuName ? nuName.value : '';
+    st.nuReason = nuReason ? nuReason.value : '';
+    st.nuStart = nuStart ? nuStart.value : '';
+    st.nuEnd = nuEnd ? nuEnd.value : '';
+    return st;
+  }
+  function restoreFormState(st){
+    if(!st) return;
+    data.cars.forEach(car => {
+      const nameSel = document.getElementById('name-'+car.id);
+      const memoInp = document.getElementById('memo-'+car.id);
+      if(nameSel && st['name-'+car.id]) nameSel.value = st['name-'+car.id];
+      if(memoInp && st['memo-'+car.id] !== undefined && document.activeElement !== memoInp) memoInp.value = st['memo-'+car.id];
+    });
+    const nuName = document.getElementById('nonuserName');
+    const nuReason = document.getElementById('nonuserReason');
+    const nuStart = document.getElementById('nonuserStart');
+    const nuEnd = document.getElementById('nonuserEnd');
+    if(nuName && st.nuName) nuName.value = st.nuName;
+    if(nuReason && st.nuReason) nuReason.value = st.nuReason;
+    if(nuStart && st.nuStart) nuStart.value = st.nuStart;
+    if(nuEnd && st.nuEnd) nuEnd.value = st.nuEnd;
+  }
+
+  function render(){
+    const formState = captureFormState();
+
+    const dateLabel = new Date(data.date+'T00:00:00').toLocaleDateString('ko-KR', { month:'long', day:'numeric', weekday:'short' });
+    const entered = totalEntered();
+    const pct = Math.min(100, Math.round((entered / TOTAL_STAFF) * 100));
+    const todayNU = todaysNonUsers();
+    const assigned = assignedNamesToday();
+    const availableRoster = ROSTER.filter(n => !assigned.has(n));
+
+    root.innerHTML = `
+      <div class="notice">⏰ 오늘 퇴근 차량 입력 마감시간: <b>${CUTOFF_TIME}</b> — 마감 전까지 탑승 또는 미이용 등록을 완료해 주세요.</div>
+      <div class="head">
+        <div>
+          <h1>퇴근 셔틀 배차 현황</h1>
+          <div class="sub">${dateLabel}</div>
+        </div>
+        <div style="display:flex; align-items:flex-end;">
+          <div class="stat">
+            <div class="num">${entered} / ${TOTAL_STAFF} (${pct}%)</div>
+            <div class="label">전체 입력 완료율</div>
+            <div class="progress-wrap"><div class="progress-bar ${pct>=100?'done':''}" style="width:${pct}%;"></div></div>
+          </div>
+          <button class="reset-btn" id="statusBtn">${statusOpen ? '입력 현황 닫기' : '입력 현황 보기'}</button>
+          <button class="reset-btn" id="resetBtn">탑승 명단 초기화</button>
+        </div>
+      </div>
+
+      ${pendingConfirm && pendingConfirm.type === 'reset' ? `
+        <div class="confirm-bar">
+          <span>정말 오늘 탑승 명단을 전체 초기화하시겠습니까? 되돌릴 수 없습니다. (미이용 등록은 유지됩니다)</span>
+          <button class="confirm-yes" id="resetYes">초기화</button>
+          <button class="confirm-no" id="resetNo">취소</button>
+        </div>
+      ` : ''}
+
+      ${statusOpen ? renderStatusPanel() : ''}
+
+      <div class="section-label">미이용 등록 (출장 · 휴가 · 자차 이용 등, 기간 지정 가능)</div>
+      <div class="nonuser-card">
+        <div class="nonuser-list" id="nonuserList">
+          ${todayNU.length === 0
+            ? '<div class="nonuser-empty">오늘 등록된 미이용자가 없습니다</div>'
+            : todayNU.map(n => (pendingConfirm && pendingConfirm.type === 'leave' && pendingConfirm.id === n.id) ? `
+              <div class="nonuser-chip confirming">
+                <span>${escapeHtml(n.name)} 등록 취소?</span>
+                <button class="chip-yes" id="nuYes-${n.id}">예</button>
+                <button class="chip-no" id="nuNo-${n.id}">아니오</button>
+              </div>
+            ` : `
+              <div class="nonuser-chip">
+                <span>${escapeHtml(n.name)}</span>
+                <span class="reason" style="${reasonStyle(n.reason)}">${escapeHtml(n.reason)}</span>
+                ${fmtRange(n) ? `<span class="range">${fmtRange(n)}</span>` : ''}
+                <button id="delnu-${n.id}" title="등록 취소">×</button>
+              </div>
+            `).join('')}
+        </div>
+        <div class="nonuser-add">
+          <input type="text" id="nonuserName" list="rosterList" placeholder="이름 선택 또는 입력">
+          <datalist id="rosterList">
+            ${availableRoster.map(n => `<option value="${n}">`).join('')}
+          </datalist>
+          <select id="nonuserReason">
+            ${NONUSE_REASONS.map(r => `<option value="${r}">${r}</option>`).join('')}
+          </select>
+          <span class="date-field">시작 <input type="date" id="nonuserStart" value="${todayStr()}"></span>
+          <span class="date-field">종료 <input type="date" id="nonuserEnd" value="${todayStr()}"></span>
+          <button id="nonuserAddBtn">등록</button>
+        </div>
+      </div>
+
+      <div class="section-label">차량별 탑승 명단</div>
+      <div class="grid">
+        ${data.cars.map(car => renderCar(car, availableRoster)).join('')}
+      </div>
+      <div class="foot-note">탑승 명단은 매일 자동 초기화됩니다</div>
+      ${isPastCutoff() ? renderSummary(entered, pct, todayNU) : ''}
+    `;
+
+    document.getElementById('statusBtn').onclick = () => {
+      statusOpen = !statusOpen;
+      render();
+    };
+
+    document.getElementById('resetBtn').onclick = () => {
+      pendingConfirm = { type:'reset' };
+      render();
+    };
+    const resetYes = document.getElementById('resetYes');
+    if(resetYes){
+      resetYes.onclick = async () => {
+        pendingConfirm = null;
+        data = defaultData();
+        await saveBoard();
+        render();
+      };
+      document.getElementById('resetNo').onclick = () => {
+        pendingConfirm = null;
+        render();
+      };
+    }
+
+    todayNU.forEach(n => {
+      const btn = document.getElementById('delnu-'+n.id);
+      if(btn){
+        btn.onclick = () => {
+          pendingConfirm = { type:'leave', id:n.id };
+          render();
+        };
+      }
+      const yesBtn = document.getElementById('nuYes-'+n.id);
+      if(yesBtn){
+        yesBtn.onclick = async () => {
+          pendingConfirm = null;
+          leaves = leaves.filter(x => x.id !== n.id);
+          await saveLeaves();
+          render();
+        };
+        document.getElementById('nuNo-'+n.id).onclick = () => {
+          pendingConfirm = null;
+          render();
+        };
+      }
+    });
+
+    const nuNameSel = document.getElementById('nonuserName');
+    const nuReasonSelect = document.getElementById('nonuserReason');
+    const nuStartInput = document.getElementById('nonuserStart');
+    const nuEndInput = document.getElementById('nonuserEnd');
+    document.getElementById('nonuserAddBtn').onclick = async () => {
+      const name = nuNameSel.value.trim();
+      if(!name) return;
+      let start = nuStartInput.value || todayStr();
+      let end = nuEndInput.value || start;
+      if(end < start) end = start;
+      leaves.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7), name, reason: nuReasonSelect.value, start, end });
+      nuNameSel.value = '';
+      await saveLeaves();
+      render();
+    };
+
+    data.cars.forEach(car => {
+      car.passengers.forEach(p => {
+        const delBtn = document.getElementById('del-'+car.id+'-'+p.id);
+        if(delBtn){
+          delBtn.onclick = async () => {
+            car.passengers = car.passengers.filter(x => x.id !== p.id);
+            await saveBoard();
+            render();
+          };
+        }
+      });
+
+      const addBtn = document.getElementById('add-'+car.id);
+      const nameSel = document.getElementById('name-'+car.id);
+
+      const memoInput = document.getElementById('memo-'+car.id);
+      const memoDoneBtn = document.getElementById('memodone-'+car.id);
+      if(memoDoneBtn && memoInput){
+        memoDoneBtn.onclick = async () => {
+          const text = memoInput.value.trim();
+          if(!text) return;
+          if(!Array.isArray(car.memos)) car.memos = [];
+          car.memos.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7), text });
+          memoInput.value = '';
+          await saveBoard();
+          render();
+        };
+      }
+      car.memos && car.memos.forEach(m => {
+        const delBtn = document.getElementById('delmemo-'+car.id+'-'+m.id);
+        if(delBtn){
+          delBtn.onclick = async () => {
+            car.memos = car.memos.filter(x => x.id !== m.id);
+            await saveBoard();
+            render();
+          };
+        }
+      });
+
+      if(addBtn){
+        addBtn.onclick = async () => {
+          const name = nameSel.value.trim();
+          if(!name) return;
+          if(car.passengers.length >= CAPACITY) return;
+          car.passengers.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7), name });
+          nameSel.value = '';
+          await saveBoard();
+          render();
+        };
+      }
+    });
+
+    restoreFormState(formState);
+  }
+
+  function renderCar(car, availableRoster){
+    const slot = SLOTS[car.id];
+    const driver = driverForSlot(slot.idx);
+    const isFull = car.passengers.length >= CAPACITY;
+    return `
+      <div class="car">
+        <div class="car-top">
+          <div class="car-name">${slot.label}</div>
+          <div class="car-time">${slot.time}</div>
+        </div>
+        <div class="car-driver">기사 <b>${driver}</b></div>
+        ${car.memos && car.memos.length > 0 ? `
+          <div class="car-memo-badges">
+            ${car.memos.map(m => `
+              <div class="car-memo-badge">
+                <span>${escapeHtml(m.text)}</span>
+                <button class="memo-del-btn" id="delmemo-${car.id}-${m.id}" title="삭제">×</button>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+        <div class="seats-row">
+          <div class="seats">${seatDots(car)}</div>
+          <div class="status-line ${isFull ? 'full' : 'ok'}">${isFull ? '마감' : (CAPACITY - car.passengers.length) + '자리 남음'}</div>
+        </div>
+        <ul class="plist">
+          ${car.passengers.length === 0
+            ? '<li class="empty-row" style="background:none; padding:2px;">예약자가 없습니다</li>'
+            : car.passengers.map((p, i) => `
+              <li>
+                <span class="pname"><span class="pnum">${circledNumber(i+1)}</span>${escapeHtml(p.name)}</span>
+                <button id="del-${car.id}-${p.id}" title="삭제">×</button>
+              </li>
+            `).join('')}
+        </ul>
+        <div class="add-row">
+          <input type="text" id="name-${car.id}" list="rosterList" placeholder="이름 선택 또는 입력" ${isFull ? 'disabled' : ''}>
+          <button id="add-${car.id}" ${isFull ? 'disabled' : ''}>탑승</button>
+        </div>
+        <div class="car-memo-label">Memo</div>
+        <div class="memo-row">
+          <textarea class="car-memo" id="memo-${car.id}" placeholder="예: 정비 중, 기사 변경, 경로 변경 등"></textarea>
+          <button class="memo-done-btn" id="memodone-${car.id}">입력</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function circledNumber(n){
+    const map = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
+    return map[n-1] || `(${n})`;
+  }
+
+  function renderStatusPanel(){
+    const todayNU = todaysNonUsers();
+    const carRows = data.cars.map(car => {
+      const slot = SLOTS[car.id];
+      const names = car.passengers.length === 0
+        ? '<span class="summary-note">탑승자 없음</span>'
+        : car.passengers.map((p,i) => `${circledNumber(i+1)}${escapeHtml(p.name)}`).join('  ');
+      return `
+        <div class="status-panel-row">
+          <div class="status-panel-slot">${slot.label} <span class="status-panel-time">${slot.time}</span></div>
+          <div class="status-panel-names">${names}</div>
+        </div>
+      `;
+    }).join('');
+
+    const nuText = todayNU.length === 0
+      ? '<span class="summary-note">없음</span>'
+      : todayNU.map(n => `${escapeHtml(n.name)}(${escapeHtml(n.reason)})`).join(', ');
+
+    return `
+      <div class="status-panel">
+        <div class="summary-title" style="margin-bottom:12px;">📋 현재 입력 현황</div>
+        ${carRows}
+        <hr class="summary-divider">
+        <div class="status-panel-row">
+          <div class="status-panel-slot">미이용</div>
+          <div class="status-panel-names">${nuText}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderSummary(entered, pct, todayNU){
+    const maxCount = CAPACITY;
+    const carRows = data.cars.map(car => {
+      const slot = SLOTS[car.id];
+      const c = car.passengers.length;
+      const w = Math.round((c / maxCount) * 100);
+      return `
+        <div class="summary-row">
+          <div class="s-label">${slot.label} (${slot.time})</div>
+          <div class="s-bar-wrap"><div class="s-bar" style="width:${w}%;"></div></div>
+          <div class="s-count">${c}/${maxCount}</div>
+        </div>
+      `;
+    }).join('');
+
+    const reasonCounts = {};
+    todayNU.forEach(n => { reasonCounts[n.reason] = (reasonCounts[n.reason]||0) + 1; });
+    const reasonKeys = Object.keys(reasonCounts);
+    const maxReason = Math.max(1, ...reasonKeys.map(k => reasonCounts[k]));
+    const reasonRows = reasonKeys.length === 0
+      ? '<div class="summary-note">오늘 미이용 등록 없음</div>'
+      : reasonKeys.map(k => `
+          <div class="summary-row">
+            <div class="s-label">${k}</div>
+            <div class="s-bar-wrap"><div class="s-bar" style="width:${Math.round((reasonCounts[k]/maxReason)*100)}%;"></div></div>
+            <div class="s-count">${reasonCounts[k]}명</div>
+          </div>
+        `).join('');
+
+    const missing = TOTAL_STAFF - entered;
+
+    return `
+      <div class="summary-card">
+        <div class="summary-title">🕔 17시 마감 요약</div>
+        ${carRows}
+        <hr class="summary-divider">
+        ${reasonRows}
+        <hr class="summary-divider">
+        <div class="summary-note">전체 ${TOTAL_STAFF}명 중 ${entered}명 입력 완료 (${pct}%)${missing > 0 ? ` · 미입력 ${missing}명` : ' · 전원 입력 완료'}</div>
+      </div>
+    `;
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  }
+
+  loadAll();
+  setInterval(() => {
+    if(pendingConfirm) return;
+    if(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('car-memo')) return;
+    loadAll();
+  }, 8000);
+})();
+</script>
+
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').catch(e => console.error('SW 등록 실패', e));
+    });
+  }
+</script>
+</body>
+</html>
