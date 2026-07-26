@@ -479,20 +479,52 @@
   }
   .name-picker input{
     width:100%;
+    box-sizing:border-box;
+  }
+  .name-dropdown-backdrop{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.4);
+    z-index:999;
   }
   .name-dropdown{
-    position:absolute;
-    top:calc(100% + 4px);
+    position:fixed;
     left:0;
     right:0;
+    bottom:0;
     background:var(--panel);
-    border:1px solid var(--line);
-    border-radius:10px;
-    box-shadow:0 8px 20px rgba(0,0,0,0.12);
-    max-height:220px;
+    border-top:1px solid var(--line);
+    border-radius:16px 16px 0 0;
+    box-shadow:0 -10px 30px rgba(0,0,0,0.2);
+    max-height:60vh;
     overflow-y:auto;
-    z-index:20;
-    padding:4px;
+    z-index:1000;
+    padding:6px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+    box-sizing:border-box;
+  }
+  .name-dropdown-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 8px 8px;
+    font-size:13px;
+    font-weight:700;
+    color:var(--muted);
+    border-bottom:1px solid var(--line);
+    margin-bottom:4px;
+    position:sticky;
+    top:0;
+    background:var(--panel);
+  }
+  .name-dropdown-close{
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--muted);
+    border-radius:8px;
+    padding:6px 12px;
+    font-size:12.5px;
+    font-weight:700;
+    cursor:pointer;
   }
   .name-opt{
     display:block;
@@ -501,16 +533,17 @@
     background:none;
     border:none;
     color:var(--text);
-    font-size:14px;
-    padding:10px 10px;
-    border-radius:7px;
+    font-size:17px;
+    padding:14px 12px;
+    border-radius:9px;
     cursor:pointer;
+    white-space:nowrap;
   }
   .name-opt:hover, .name-opt:active{ background:var(--panel-2); }
   .name-opt-empty{
     color:var(--muted);
-    font-size:12px;
-    padding:10px;
+    font-size:13px;
+    padding:14px 12px;
   }
   .add-row{
     display:flex;
@@ -701,6 +734,62 @@
     return `background:${c.bg}; color:${c.fg};`;
   }
 
+  function makeIconDataUrl(){
+    try{
+      const canvas = document.createElement('canvas');
+      canvas.width = 192; canvas.height = 192;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#c2740a';
+      ctx.fillRect(0,0,192,192);
+      ctx.font = '120px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🚌', 96, 104);
+      return canvas.toDataURL('image/png');
+    } catch(e){ return null; }
+  }
+
+  function setupHomeScreenHints(){
+    try{
+      document.title = '퇴근 셔틀 배차현황';
+      const head = document.head;
+
+      function upsertMeta(name, content){
+        let el = head.querySelector(`meta[name="${name}"]`);
+        if(!el){ el = document.createElement('meta'); el.setAttribute('name', name); head.appendChild(el); }
+        el.setAttribute('content', content);
+      }
+      upsertMeta('apple-mobile-web-app-capable', 'yes');
+      upsertMeta('apple-mobile-web-app-title', '퇴근셔틀');
+      upsertMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
+      upsertMeta('theme-color', '#c2740a');
+      upsertMeta('viewport', 'width=device-width, initial-scale=1, maximum-scale=1');
+
+      const iconUrl = makeIconDataUrl();
+      if(iconUrl){
+        ['apple-touch-icon', 'icon'].forEach(rel => {
+          let link = head.querySelector(`link[rel="${rel}"]`);
+          if(!link){ link = document.createElement('link'); link.setAttribute('rel', rel); head.appendChild(link); }
+          link.setAttribute('href', iconUrl);
+        });
+
+        const manifest = {
+          name: '퇴근 셔틀 배차현황',
+          short_name: '퇴근셔틀',
+          start_url: location.href,
+          display: 'standalone',
+          background_color: '#f5f7fa',
+          theme_color: '#c2740a',
+          icons: [{ src: iconUrl, sizes: '192x192', type: 'image/png' }]
+        };
+        const manifestUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type:'application/manifest+json' }));
+        let manifestLink = head.querySelector('link[rel="manifest"]');
+        if(!manifestLink){ manifestLink = document.createElement('link'); manifestLink.setAttribute('rel','manifest'); head.appendChild(manifestLink); }
+        manifestLink.setAttribute('href', manifestUrl);
+      }
+    } catch(e){ console.error('홈 화면 아이콘 설정 실패', e); }
+  }
+
   function todayStr(){
     return new Date().toLocaleDateString('sv-SE');
   }
@@ -773,7 +862,6 @@
     pendingRerender = false;
     render();
   }
-  // 입력 중이라 미뤄뒀던 화면 갱신을, 입력을 마치는 순간(포커스 아웃) 반영합니다.
   document.addEventListener('focusout', () => {
     setTimeout(() => { if(pendingRerender) tryRender(); }, 250);
   }, true);
@@ -813,19 +901,48 @@
     const input = document.getElementById(inputId);
     const dropdown = document.getElementById(dropdownId);
     if(!input || !dropdown) return;
+    const backdropId = dropdownId + '-backdrop';
+
+    function closeList(){
+      dropdown.hidden = true;
+      const bd = document.getElementById(backdropId);
+      if(bd) bd.remove();
+    }
 
     function showList(){
       const q = input.value.trim();
       const matches = roster.filter(n => !q || n.includes(q));
-      dropdown.innerHTML = matches.length === 0
-        ? '<div class="name-opt-empty">일치하는 이름 없음 · 직접 입력 가능</div>'
-        : matches.map(n => `<button type="button" class="name-opt" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('');
+      dropdown.innerHTML = `
+        <div class="name-dropdown-header">
+          <span>이름 선택</span>
+          <button type="button" class="name-dropdown-close" id="${dropdownId}-closeBtn">닫기</button>
+        </div>
+        ${matches.length === 0
+          ? '<div class="name-opt-empty">일치하는 이름 없음 · 직접 입력 가능</div>'
+          : matches.map(n => `<button type="button" class="name-opt" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('')}
+      `;
       dropdown.hidden = false;
+
+      if(!document.getElementById(backdropId)){
+        const bd = document.createElement('div');
+        bd.className = 'name-dropdown-backdrop';
+        bd.id = backdropId;
+        document.body.appendChild(bd);
+        bd.addEventListener('mousedown', (e) => { e.preventDefault(); closeList(); });
+        bd.addEventListener('touchstart', (e) => { e.preventDefault(); closeList(); }, { passive:false });
+      }
+
+      const closeBtn = document.getElementById(dropdownId+'-closeBtn');
+      if(closeBtn){
+        closeBtn.addEventListener('mousedown', (e) => { e.preventDefault(); closeList(); });
+        closeBtn.addEventListener('touchstart', (e) => { e.preventDefault(); closeList(); }, { passive:false });
+      }
+
       dropdown.querySelectorAll('.name-opt').forEach(btn => {
         // mousedown/touchstart로 처리해야 blur보다 먼저 발생해 선택이 유실되지 않음
         const pick = () => {
           input.value = btn.getAttribute('data-name');
-          dropdown.hidden = true;
+          closeList();
         };
         btn.addEventListener('mousedown', (e) => { e.preventDefault(); pick(); });
         btn.addEventListener('touchstart', (e) => { e.preventDefault(); pick(); }, { passive:false });
@@ -835,7 +952,7 @@
     input.addEventListener('focus', showList);
     input.addEventListener('input', showList);
     input.addEventListener('blur', () => {
-      setTimeout(() => { dropdown.hidden = true; }, 200);
+      setTimeout(() => { closeList(); }, 200);
     });
   }
 
@@ -1239,6 +1356,7 @@
     return s.replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   }
 
+  setupHomeScreenHints();
   subscribeRealtime();
 })();
 </script>
