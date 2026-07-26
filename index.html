@@ -670,8 +670,6 @@
 
 <script>
 (function(){
-  const KEY = 'shuttle-board';
-  const LEAVE_KEY = 'shuttle-leaves';
   const root = document.getElementById('root');
   let data = null;
   let leaves = [];
@@ -701,62 +699,6 @@
   function reasonStyle(reason){
     const c = REASON_COLORS[reason] || REASON_COLORS['기타'];
     return `background:${c.bg}; color:${c.fg};`;
-  }
-
-  function makeIconDataUrl(){
-    try{
-      const canvas = document.createElement('canvas');
-      canvas.width = 192; canvas.height = 192;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#c2740a';
-      ctx.fillRect(0,0,192,192);
-      ctx.font = '120px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('🚌', 96, 104);
-      return canvas.toDataURL('image/png');
-    } catch(e){ return null; }
-  }
-
-  function setupHomeScreenHints(){
-    try{
-      document.title = '퇴근 셔틀 배차현황';
-      const head = document.head;
-
-      function upsertMeta(name, content){
-        let el = head.querySelector(`meta[name="${name}"]`);
-        if(!el){ el = document.createElement('meta'); el.setAttribute('name', name); head.appendChild(el); }
-        el.setAttribute('content', content);
-      }
-      upsertMeta('apple-mobile-web-app-capable', 'yes');
-      upsertMeta('apple-mobile-web-app-title', '퇴근셔틀');
-      upsertMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
-      upsertMeta('theme-color', '#c2740a');
-      upsertMeta('viewport', 'width=device-width, initial-scale=1, maximum-scale=1');
-
-      const iconUrl = makeIconDataUrl();
-      if(iconUrl){
-        ['apple-touch-icon', 'icon'].forEach(rel => {
-          let link = head.querySelector(`link[rel="${rel}"]`);
-          if(!link){ link = document.createElement('link'); link.setAttribute('rel', rel); head.appendChild(link); }
-          link.setAttribute('href', iconUrl);
-        });
-
-        const manifest = {
-          name: '퇴근 셔틀 배차현황',
-          short_name: '퇴근셔틀',
-          start_url: location.href,
-          display: 'standalone',
-          background_color: '#f5f7fa',
-          theme_color: '#c2740a',
-          icons: [{ src: iconUrl, sizes: '192x192', type: 'image/png' }]
-        };
-        const manifestUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type:'application/manifest+json' }));
-        let manifestLink = head.querySelector('link[rel="manifest"]');
-        if(!manifestLink){ manifestLink = document.createElement('link'); manifestLink.setAttribute('rel','manifest'); head.appendChild(manifestLink); }
-        manifestLink.setAttribute('href', manifestUrl);
-      }
-    } catch(e){ console.error('홈 화면 아이콘 설정 실패', e); }
   }
 
   function todayStr(){
@@ -798,14 +740,51 @@
     return { date: todayStr(), cars: defaultCars() };
   }
 
-  async function loadBoard(){
-    try{
-      const res = await window.storage.get(KEY, true);
-      if(res && res.value){
-        const parsed = JSON.parse(res.value);
+  const db = firebase.firestore();
+  const boardDocRef = db.collection('shuttle').doc('board');
+  const leavesDocRef = db.collection('shuttle').doc('leaves');
+
+  async function saveBoard(){
+    try{ await boardDocRef.set(data); }
+    catch(e){ console.error('저장 실패', e); }
+  }
+  async function saveLeaves(){
+    try{ await leavesDocRef.set({ leaves }); }
+    catch(e){ console.error('저장 실패', e); }
+  }
+
+  function todaysNonUsers(){
+    const t = todayStr();
+    return leaves.filter(l => l.start <= t && t <= l.end);
+  }
+
+  function shouldPauseRefresh(){
+    if(pendingConfirm) return true;
+    if(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('car-memo')) return true;
+    if(document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.id && (document.activeElement.id.startsWith('name-') || document.activeElement.id === 'nonuserName')) return true;
+    if(document.querySelector('.name-dropdown:not([hidden])')) return true;
+    return false;
+  }
+
+  let boardReady = false, leavesReady = false, pendingRerender = false;
+  function tryRender(){
+    if(!boardReady || !leavesReady) return;
+    if(shouldPauseRefresh()){ pendingRerender = true; return; }
+    pendingRerender = false;
+    render();
+  }
+  // 입력 중이라 미뤄뒀던 화면 갱신을, 입력을 마치는 순간(포커스 아웃) 반영합니다.
+  document.addEventListener('focusout', () => {
+    setTimeout(() => { if(pendingRerender) tryRender(); }, 250);
+  }, true);
+
+  function subscribeRealtime(){
+    boardDocRef.onSnapshot((snap) => {
+      if(snap.exists){
+        const parsed = snap.data();
         if(parsed.date !== todayStr()){
           data = defaultData();
-          await saveBoard();
+          saveBoard();
         } else {
           data = parsed;
           data.cars.forEach(c => {
@@ -817,43 +796,17 @@
         }
       } else {
         data = defaultData();
-        await saveBoard();
+        saveBoard();
       }
-    } catch(e){
-      data = data || defaultData();
-    }
-  }
-  async function saveBoard(){
-    try{ await window.storage.set(KEY, JSON.stringify(data), true); }
-    catch(e){ console.error('저장 실패', e); }
-  }
+      boardReady = true;
+      tryRender();
+    }, (err) => console.error('보드 구독 오류', err));
 
-  async function loadLeaves(){
-    try{
-      const res = await window.storage.get(LEAVE_KEY, true);
-      if(res && res.value){
-        leaves = JSON.parse(res.value);
-        if(!Array.isArray(leaves)) leaves = [];
-      } else {
-        leaves = [];
-      }
-    } catch(e){
-      leaves = leaves || [];
-    }
-  }
-  async function saveLeaves(){
-    try{ await window.storage.set(LEAVE_KEY, JSON.stringify(leaves), true); }
-    catch(e){ console.error('저장 실패', e); }
-  }
-
-  function todaysNonUsers(){
-    const t = todayStr();
-    return leaves.filter(l => l.start <= t && t <= l.end);
-  }
-
-  async function loadAll(){
-    await Promise.all([loadBoard(), loadLeaves()]);
-    render();
+    leavesDocRef.onSnapshot((snap) => {
+      leaves = (snap.exists && Array.isArray(snap.data().leaves)) ? snap.data().leaves : [];
+      leavesReady = true;
+      tryRender();
+    }, (err) => console.error('미이용 구독 오류', err));
   }
 
   function wireNamePicker(inputId, dropdownId, roster){
@@ -1286,15 +1239,7 @@
     return s.replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   }
 
-  setupHomeScreenHints();
-  loadAll();
-  setInterval(() => {
-    if(pendingConfirm) return;
-    if(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('car-memo')) return;
-    if(document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.id && (document.activeElement.id.startsWith('name-') || document.activeElement.id === 'nonuserName')) return;
-    if(document.querySelector('.name-dropdown:not([hidden])')) return;
-    loadAll();
-  }, 8000);
+  subscribeRealtime();
 })();
 </script>
 
