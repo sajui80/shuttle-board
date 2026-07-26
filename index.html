@@ -262,7 +262,7 @@
     padding:8px 9px;
     font-size:13px;
   }
-  .nonuser-add .name-picker{ flex:1; min-width:130px; }
+  .nonuser-add input#nonuserName{ flex:1; min-width:130px; }
   .nonuser-add .date-field{
     display:flex;
     align-items:center;
@@ -299,7 +299,7 @@
     .nonuser-add input, .nonuser-add select, .nonuser-add button{
       font-size:16px; padding:10px;
     }
-    .nonuser-add .name-picker{ flex-basis:100%; }
+    .nonuser-add input#nonuserName{ flex-basis:100%; }
     .nonuser-add select#nonuserReason{ flex:1; }
     .nonuser-add .date-field{ flex:1; min-width:132px; }
     .nonuser-add button{ flex:1; }
@@ -474,79 +474,6 @@
     padding:6px 2px;
   }
 
-  .name-picker{
-    position:relative;
-    flex:1;
-    min-width:0;
-  }
-  .name-picker input{
-    width:100%;
-    box-sizing:border-box;
-  }
-  .name-dropdown-backdrop{
-    position:fixed;
-    inset:0;
-    background:rgba(0,0,0,0.4);
-    z-index:999;
-  }
-  .name-dropdown{
-    position:fixed;
-    left:0;
-    right:0;
-    bottom:0;
-    background:var(--panel);
-    border-top:1px solid var(--line);
-    border-radius:16px 16px 0 0;
-    box-shadow:0 -10px 30px rgba(0,0,0,0.2);
-    max-height:60vh;
-    overflow-y:auto;
-    z-index:1000;
-    padding:6px 8px calc(10px + env(safe-area-inset-bottom, 0px));
-    box-sizing:border-box;
-  }
-  .name-dropdown-header{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    padding:10px 8px 8px;
-    font-size:13px;
-    font-weight:700;
-    color:var(--muted);
-    border-bottom:1px solid var(--line);
-    margin-bottom:4px;
-    position:sticky;
-    top:0;
-    background:var(--panel);
-  }
-  .name-dropdown-close{
-    background:var(--panel-2);
-    border:1px solid var(--line);
-    color:var(--muted);
-    border-radius:8px;
-    padding:6px 12px;
-    font-size:12.5px;
-    font-weight:700;
-    cursor:pointer;
-  }
-  .name-opt{
-    display:block;
-    width:100%;
-    text-align:left;
-    background:none;
-    border:none;
-    color:var(--text);
-    font-size:17px;
-    padding:14px 12px;
-    border-radius:9px;
-    cursor:pointer;
-    white-space:nowrap;
-  }
-  .name-opt:hover, .name-opt:active{ background:var(--panel-2); }
-  .name-opt-empty{
-    color:var(--muted);
-    font-size:13px;
-    padding:14px 12px;
-  }
   .add-row{
     display:flex;
     gap:6px;
@@ -698,6 +625,17 @@
   .status-panel-names{
     color:var(--text);
     line-height:1.6;
+  }
+  .missing-chip{
+    display:inline-block;
+    background:rgba(225,29,72,0.08);
+    border:1px solid rgba(225,29,72,0.3);
+    color:#9f1239;
+    font-size:12.5px;
+    font-weight:600;
+    padding:3px 9px;
+    border-radius:12px;
+    margin:2px 4px 2px 0;
   }
 </style>
 
@@ -853,7 +791,6 @@
     if(pendingConfirm) return true;
     if(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('car-memo')) return true;
     if(document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.id && (document.activeElement.id.startsWith('name-') || document.activeElement.id === 'nonuserName')) return true;
-    if(document.querySelector('.name-dropdown:not([hidden])')) return true;
     return false;
   }
 
@@ -897,65 +834,6 @@
       leavesReady = true;
       tryRender();
     }, (err) => console.error('미이용 구독 오류', err));
-  }
-
-  function wireNamePicker(inputId, dropdownId, roster){
-    const input = document.getElementById(inputId);
-    const dropdown = document.getElementById(dropdownId);
-    if(!input || !dropdown) return;
-    const backdropId = dropdownId + '-backdrop';
-
-    function closeList(){
-      dropdown.hidden = true;
-      const bd = document.getElementById(backdropId);
-      if(bd) bd.remove();
-    }
-
-    function showList(){
-      const q = input.value.trim();
-      const matches = roster.filter(n => !q || n.includes(q));
-      dropdown.innerHTML = `
-        <div class="name-dropdown-header">
-          <span>이름 선택</span>
-          <button type="button" class="name-dropdown-close" id="${dropdownId}-closeBtn">닫기</button>
-        </div>
-        ${matches.length === 0
-          ? '<div class="name-opt-empty">일치하는 이름 없음 · 직접 입력 가능</div>'
-          : matches.map(n => `<button type="button" class="name-opt" data-name="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('')}
-      `;
-      dropdown.hidden = false;
-
-      if(!document.getElementById(backdropId)){
-        const bd = document.createElement('div');
-        bd.className = 'name-dropdown-backdrop';
-        bd.id = backdropId;
-        document.body.appendChild(bd);
-        bd.addEventListener('mousedown', (e) => { e.preventDefault(); closeList(); });
-        bd.addEventListener('touchstart', (e) => { e.preventDefault(); closeList(); }, { passive:false });
-      }
-
-      const closeBtn = document.getElementById(dropdownId+'-closeBtn');
-      if(closeBtn){
-        closeBtn.addEventListener('mousedown', (e) => { e.preventDefault(); closeList(); });
-        closeBtn.addEventListener('touchstart', (e) => { e.preventDefault(); closeList(); }, { passive:false });
-      }
-
-      dropdown.querySelectorAll('.name-opt').forEach(btn => {
-        // mousedown/touchstart로 처리해야 blur보다 먼저 발생해 선택이 유실되지 않음
-        const pick = () => {
-          input.value = btn.getAttribute('data-name');
-          closeList();
-        };
-        btn.addEventListener('mousedown', (e) => { e.preventDefault(); pick(); });
-        btn.addEventListener('touchstart', (e) => { e.preventDefault(); pick(); }, { passive:false });
-      });
-    }
-
-    input.addEventListener('focus', showList);
-    input.addEventListener('input', showList);
-    input.addEventListener('blur', () => {
-      setTimeout(() => { closeList(); }, 200);
-    });
   }
 
   function totalBooked(){ return data.cars.reduce((s,c)=>s+c.passengers.length,0); }
@@ -1083,10 +961,7 @@
             `).join('')}
         </div>
         <div class="nonuser-add">
-          <div class="name-picker">
-            <input type="text" id="nonuserName" placeholder="이름 선택 또는 입력" autocomplete="off">
-            <div class="name-dropdown" id="nonuserNameDropdown" hidden></div>
-          </div>
+          <input type="text" id="nonuserName" placeholder="이름 입력" autocomplete="off">
           <select id="nonuserReason">
             ${NONUSE_REASONS.map(r => `<option value="${r}">${r}</option>`).join('')}
           </select>
@@ -1151,7 +1026,6 @@
     });
 
     const nuNameSel = document.getElementById('nonuserName');
-    wireNamePicker('nonuserName', 'nonuserNameDropdown', availableRoster);
     const nuReasonSelect = document.getElementById('nonuserReason');
     const nuStartInput = document.getElementById('nonuserStart');
     const nuEndInput = document.getElementById('nonuserEnd');
@@ -1181,7 +1055,6 @@
 
       const addBtn = document.getElementById('add-'+car.id);
       const nameSel = document.getElementById('name-'+car.id);
-      wireNamePicker('name-'+car.id, 'nameDropdown-'+car.id, availableRoster);
 
       const memoInput = document.getElementById('memo-'+car.id);
       const memoDoneBtn = document.getElementById('memodone-'+car.id);
@@ -1259,10 +1132,7 @@
             `).join('')}
         </ul>
         <div class="add-row">
-          <div class="name-picker">
-            <input type="text" id="name-${car.id}" placeholder="이름 선택 또는 입력" autocomplete="off" ${isFull ? 'disabled' : ''}>
-            <div class="name-dropdown" id="nameDropdown-${car.id}" hidden></div>
-          </div>
+          <input type="text" id="name-${car.id}" placeholder="이름 입력" autocomplete="off" ${isFull ? 'disabled' : ''}>
           <button id="add-${car.id}" ${isFull ? 'disabled' : ''}>탑승</button>
         </div>
         <div class="car-memo-label">Memo</div>
@@ -1298,6 +1168,12 @@
       ? '<span class="summary-note">없음</span>'
       : todayNU.map(n => `${escapeHtml(n.name)}(${escapeHtml(n.reason)})`).join(', ');
 
+    const assigned = assignedNamesToday();
+    const missing = ROSTER.filter(n => !assigned.has(n));
+    const missingHtml = missing.length === 0
+      ? '<span class="summary-note">전원 입력 완료</span>'
+      : missing.map(n => `<span class="missing-chip">${escapeHtml(n)}</span>`).join(' ');
+
     return `
       <div class="status-panel">
         <div class="summary-title" style="margin-bottom:12px;">📋 현재 입력 현황</div>
@@ -1306,6 +1182,11 @@
         <div class="status-panel-row">
           <div class="status-panel-slot">미이용</div>
           <div class="status-panel-names">${nuText}</div>
+        </div>
+        <hr class="summary-divider">
+        <div class="status-panel-row">
+          <div class="status-panel-slot">미입력 (${missing.length}명)</div>
+          <div class="status-panel-names">${missingHtml}</div>
         </div>
       </div>
     `;
