@@ -766,20 +766,7 @@
     border-radius:12px;
     margin:2px 4px 2px 0;
   }
-  .capacity-edit-wrap{
-    text-align:center;
-    margin-top:10px;
-  }
-  .capacity-edit-btn{
-    background:none;
-    border:none;
-    color:var(--muted);
-    font-size:11px;
-    text-decoration:underline;
-    cursor:pointer;
-    padding:4px 8px;
-  }
-  .capacity-edit-btn:hover{ color:var(--amber); }
+
 </style>
 
 <div id="root" class="board"><div class="loading">불러오는 중...</div></div>
@@ -801,7 +788,7 @@
     { idx:3, label:'4호차', time:'20:00' }
   ];
   const CAPACITY = 5;
-  let TOTAL_STAFF = 15;
+  const TOTAL_STAFF = 15; // 입력 대상 인원 수 — 변경 시 이 숫자만 고치면 됩니다
   const CUTOFF_TIME = '17:00';
   const DRIVERS_BASE = ['Kaillash','Devender','Tarun','Amit'];
   const ANCHOR_MONDAY = new Date('2026-07-20T00:00:00');
@@ -922,9 +909,21 @@
   }
 
   const db = firebase.firestore();
+
+  // 사내망/VPN 등에서 웹소켓이 막혀 있으면 최초 연결이 느려질 수 있어,
+  // 연결 방식을 자동으로 빠르게 감지하도록 설정합니다.
+  try{ db.settings({ experimentalAutoDetectLongPolling: true }); } catch(e){ console.warn('firestore settings 적용 실패', e); }
+
+  // 최근에 불러온 데이터를 기기에 캐싱해두어, 다음 접속부터는 화면이 즉시 뜨고
+  // 백그라운드에서 최신 데이터로 갱신되도록 합니다. (지원되지 않는 환경이면 조용히 무시)
+  try{
+    db.enablePersistence({ synchronizeTabs: true }).catch((err) => {
+      console.warn('오프라인 캐시 사용 불가:', err && err.code);
+    });
+  } catch(e){ console.warn('enablePersistence 호출 실패', e); }
+
   const boardDocRef = db.collection('shuttle').doc('board');
   const leavesDocRef = db.collection('shuttle').doc('leaves');
-  const settingsDocRef = db.collection('shuttle').doc('settings');
 
   async function saveBoard(){
     try{ await boardDocRef.set(data); }
@@ -932,10 +931,6 @@
   }
   async function saveLeaves(){
     try{ await leavesDocRef.set({ leaves }); }
-    catch(e){ console.error('저장 실패', e); }
-  }
-  async function saveSettings(){
-    try{ await settingsDocRef.set({ total: TOTAL_STAFF }); }
     catch(e){ console.error('저장 실패', e); }
   }
 
@@ -951,10 +946,8 @@
     return false;
   }
 
-  let boardReady = false, leavesReady = false, settingsReady = false, pendingRerender = false;
+  let boardReady = false, leavesReady = false, pendingRerender = false;
   function tryRender(){
-    // 정원 설정(settings)은 화면 표시에 필수가 아니므로, 탑승 명단/미이용 정보만 준비되면 바로 렌더링합니다.
-    // (settings는 도착하는 대로 반영되어 다시 렌더링됩니다)
     if(!boardReady || !leavesReady) return;
     if(shouldPauseRefresh()){ pendingRerender = true; return; }
     pendingRerender = false;
@@ -993,21 +986,6 @@
       leavesReady = true;
       tryRender();
     }, (err) => console.error('미이용 구독 오류', err));
-
-    settingsDocRef.onSnapshot((snap) => {
-      if(snap.exists && typeof snap.data().total === 'number' && snap.data().total > 0){
-        TOTAL_STAFF = snap.data().total;
-      } else {
-        saveSettings();
-      }
-      settingsReady = true;
-      tryRender();
-    }, (err) => {
-      // 설정 문서 접근에 실패해도(권한 등) 화면 전체가 멈추지 않도록 기본값(15명)으로 계속 진행합니다.
-      console.error('설정 구독 오류', err);
-      settingsReady = true;
-      tryRender();
-    });
   }
 
   function totalBooked(){ return data.cars.reduce((s,c)=>s+c.passengers.length,0); }
@@ -1170,10 +1148,6 @@
       </div>
       <div class="foot-note">탑승 명단은 매일 자동 초기화됩니다</div>
       ${isPastCutoff() ? renderSummary(entered, pct, todayNU) : ''}
-
-      <div class="capacity-edit-wrap">
-        <button class="capacity-edit-btn" id="capacityEditBtn">입력 정원 수정</button>
-      </div>
     `;
 
     document.getElementById('statusBtn').onclick = () => {
@@ -1289,22 +1263,6 @@
         };
       }
     });
-
-    const capacityBtn = document.getElementById('capacityEditBtn');
-    if(capacityBtn){
-      capacityBtn.onclick = async () => {
-        const input = window.prompt(`입력 대상 인원 수를 입력하세요 (현재 ${TOTAL_STAFF}명)`, TOTAL_STAFF);
-        if(input === null) return;
-        const n = parseInt(input, 10);
-        if(!Number.isFinite(n) || n <= 0){
-          alert('올바른 숫자를 입력해 주세요.');
-          return;
-        }
-        TOTAL_STAFF = n;
-        await saveSettings();
-        render();
-      };
-    }
 
     restoreFormState(formState);
   }
