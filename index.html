@@ -12,6 +12,10 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 
+<!-- 초기 연결(DNS/TLS)을 미리 맺어 Firebase 로딩 속도를 조금 앞당깁니다 -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+
 <!-- Firebase (무료 플랜으로 충분합니다) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -377,12 +381,12 @@
     font-size:13px;
   }
   .nonuser-add input#nonuserName{ flex:1; min-width:130px; }
-  .nonuser-add .date-field{
-    display:flex;
-    align-items:center;
-    gap:4px;
-    font-size:11px;
+  .nu-row-meta select{ flex:1.2; min-width:100px; }
+  .nu-row-meta input[type="date"]{ flex:1; min-width:130px; }
+  .date-sep{
     color:var(--muted);
+    font-size:12px;
+    flex-shrink:0;
   }
   .nonuser-add button{
     background:var(--panel-2);
@@ -415,12 +419,12 @@
     .system-title{ font-size:16px; }
     .notice{ flex-wrap:wrap; width:100%; }
     .nonuser-add{ flex-direction:column; align-items:stretch; gap:8px; }
-    .nu-row-name, .nu-row-meta{ display:flex; gap:6px; width:100%; }
+    .nu-row-name, .nu-row-meta{ display:flex; gap:5px; width:100%; flex-wrap:nowrap; }
     .nu-row-name input{ flex:1; min-width:0; font-size:16px; padding:10px; }
     .nu-row-name button{ flex-shrink:0; font-size:14px; padding:0 16px; }
-    .nu-row-meta select{ flex:1.3; min-width:0; font-size:12.5px; padding:8px 5px; }
-    .nu-row-meta .date-field{ flex:1; min-width:0; font-size:10px; gap:2px; }
-    .nu-row-meta .date-field input{ width:100%; min-width:0; font-size:12px; padding:8px 3px; }
+    .nu-row-meta select{ flex:0 0 58px; min-width:0; font-size:11px; padding:7px 2px; }
+    .nu-row-meta input[type="date"]{ flex:1 1 0; min-width:0; font-size:12px; padding:7px 2px; }
+    .date-sep{ flex-shrink:0; font-size:11px; padding:0 1px; }
     .add-row input{ font-size:16px; padding:10px; }
     .add-row button{ padding:0 18px; }
     .car-memo{ font-size:16px; }
@@ -949,7 +953,9 @@
 
   let boardReady = false, leavesReady = false, settingsReady = false, pendingRerender = false;
   function tryRender(){
-    if(!boardReady || !leavesReady || !settingsReady) return;
+    // 정원 설정(settings)은 화면 표시에 필수가 아니므로, 탑승 명단/미이용 정보만 준비되면 바로 렌더링합니다.
+    // (settings는 도착하는 대로 반영되어 다시 렌더링됩니다)
+    if(!boardReady || !leavesReady) return;
     if(shouldPauseRefresh()){ pendingRerender = true; return; }
     pendingRerender = false;
     render();
@@ -996,7 +1002,12 @@
       }
       settingsReady = true;
       tryRender();
-    }, (err) => console.error('설정 구독 오류', err));
+    }, (err) => {
+      // 설정 문서 접근에 실패해도(권한 등) 화면 전체가 멈추지 않도록 기본값(15명)으로 계속 진행합니다.
+      console.error('설정 구독 오류', err);
+      settingsReady = true;
+      tryRender();
+    });
   }
 
   function totalBooked(){ return data.cars.reduce((s,c)=>s+c.passengers.length,0); }
@@ -1146,8 +1157,9 @@
             <select id="nonuserReason">
               ${NONUSE_REASONS.map(r => `<option value="${r}">${reasonIcon(r)} ${r}</option>`).join('')}
             </select>
-            <span class="date-field">시작 <input type="date" id="nonuserStart" value="${todayStr()}"></span>
-            <span class="date-field">종료 <input type="date" id="nonuserEnd" value="${todayStr()}"></span>
+            <input type="date" id="nonuserStart" value="${todayStr()}" title="시작일">
+            <span class="date-sep">~</span>
+            <input type="date" id="nonuserEnd" value="${todayStr()}" title="종료일">
           </div>
         </div>
       </div>
