@@ -380,11 +380,44 @@
   }
   .nonuser-add input#nonuserName{ flex:1; min-width:130px; }
   .nu-row-meta select{ flex:1.2; min-width:100px; }
-  .nu-row-meta input[type="date"]{ flex:1; min-width:130px; }
+  .date-wrap{
+    position:relative;
+    flex:1;
+    min-width:90px;
+    display:flex;
+  }
+  .date-label{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:8px 6px;
+    font-size:13px;
+    font-weight:600;
+    color:var(--text);
+    white-space:nowrap;
+    pointer-events:none;
+  }
+  .date-wrap input[type="date"]{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    opacity:0;
+    border:none;
+    padding:0;
+    margin:0;
+    cursor:pointer;
+  }
   .date-sep{
     color:var(--muted);
     font-size:12px;
     flex-shrink:0;
+    display:flex;
+    align-items:center;
   }
   .nonuser-add button{
     background:var(--panel-2);
@@ -417,11 +450,12 @@
     .system-title{ font-size:16px; }
     .notice{ flex-wrap:wrap; width:100%; }
     .nonuser-add{ flex-direction:column; align-items:stretch; gap:8px; }
-    .nu-row-name, .nu-row-meta{ display:flex; gap:5px; width:100%; flex-wrap:nowrap; }
+    .nu-row-name, .nu-row-meta{ display:flex; gap:5px; width:100%; flex-wrap:nowrap; align-items:center; }
     .nu-row-name input{ flex:1; min-width:0; font-size:16px; padding:10px; }
     .nu-row-name button{ flex-shrink:0; font-size:14px; padding:0 16px; }
-    .nu-row-meta select{ flex:0 0 58px; min-width:0; font-size:11px; padding:7px 2px; }
-    .nu-row-meta input[type="date"]{ flex:1 1 0; min-width:0; font-size:12px; padding:7px 2px; }
+    .nu-row-meta select{ flex:0 0 76px; min-width:0; font-size:11.5px; padding:7px 2px; }
+    .date-wrap{ flex:1; min-width:64px; }
+    .date-label{ font-size:12px; padding:7px 2px; }
     .date-sep{ flex-shrink:0; font-size:11px; padding:0 1px; }
     .add-row input{ font-size:16px; padding:10px; }
     .add-row button{ padding:0 18px; }
@@ -1015,6 +1049,17 @@
     return `${s}~${e}`;
   }
 
+  // 'YYYY-MM-DD' -> '7월 28일' (연도 생략)
+  function fmtDateShort(d){
+    if(!d) return '';
+    const parts = d.split('-');
+    if(parts.length < 3) return d;
+    const m = parseInt(parts[1], 10);
+    const day = parseInt(parts[2], 10);
+    if(!m || !day) return d;
+    return `${m}월 ${day}일`;
+  }
+
   // 재렌더링으로 입력 중이던 값이 사라지지 않도록 상태를 저장/복원
   function captureFormState(){
     const st = {};
@@ -1048,8 +1093,16 @@
     const nuEnd = document.getElementById('nonuserEnd');
     if(nuName && st.nuName) nuName.value = st.nuName;
     if(nuReason && st.nuReason) nuReason.value = st.nuReason;
-    if(nuStart && st.nuStart) nuStart.value = st.nuStart;
-    if(nuEnd && st.nuEnd) nuEnd.value = st.nuEnd;
+    if(nuStart && st.nuStart){
+      nuStart.value = st.nuStart;
+      const lbl = document.getElementById('nonuserStartLabel');
+      if(lbl) lbl.textContent = fmtDateShort(nuStart.value);
+    }
+    if(nuEnd && st.nuEnd){
+      nuEnd.value = st.nuEnd;
+      const lbl = document.getElementById('nonuserEndLabel');
+      if(lbl) lbl.textContent = fmtDateShort(nuEnd.value);
+    }
   }
 
   function render(){
@@ -1133,9 +1186,15 @@
             <select id="nonuserReason">
               ${NONUSE_REASONS.map(r => `<option value="${r}">${reasonIcon(r)} ${r}</option>`).join('')}
             </select>
-            <input type="date" id="nonuserStart" value="${todayStr()}" title="시작일">
+            <span class="date-wrap">
+              <span class="date-label" id="nonuserStartLabel">${fmtDateShort(todayStr())}</span>
+              <input type="date" id="nonuserStart" value="${todayStr()}" title="시작일">
+            </span>
             <span class="date-sep">~</span>
-            <input type="date" id="nonuserEnd" value="${todayStr()}" title="종료일">
+            <span class="date-wrap">
+              <span class="date-label" id="nonuserEndLabel">${fmtDateShort(todayStr())}</span>
+              <input type="date" id="nonuserEnd" value="${todayStr()}" title="종료일">
+            </span>
           </div>
         </div>
       </div>
@@ -1198,6 +1257,18 @@
     const nuReasonSelect = document.getElementById('nonuserReason');
     const nuStartInput = document.getElementById('nonuserStart');
     const nuEndInput = document.getElementById('nonuserEnd');
+    if(nuStartInput){
+      nuStartInput.oninput = () => {
+        const lbl = document.getElementById('nonuserStartLabel');
+        if(lbl) lbl.textContent = fmtDateShort(nuStartInput.value);
+      };
+    }
+    if(nuEndInput){
+      nuEndInput.oninput = () => {
+        const lbl = document.getElementById('nonuserEndLabel');
+        if(lbl) lbl.textContent = fmtDateShort(nuEndInput.value);
+      };
+    }
     document.getElementById('nonuserAddBtn').onclick = async () => {
       const name = nuNameSel.value.trim();
       if(!name) return;
