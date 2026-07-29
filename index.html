@@ -727,21 +727,6 @@
     border-radius:12px;
     margin:2px 4px 2px 0;
   }
-  .capacity-edit-wrap{
-    display:flex;
-    justify-content:flex-end;
-    margin-top:12px;
-  }
-  .capacity-edit-btn{
-    background:none;
-    border:none;
-    color:var(--muted);
-    font-size:11px;
-    text-decoration:underline;
-    cursor:pointer;
-    padding:4px 6px;
-  }
-  .capacity-edit-btn:hover{ color:var(--amber); }
 
 </style>
 
@@ -764,7 +749,7 @@
     { idx:3, label:'4호차', time:'20:00' }
   ];
   const CAPACITY = 5;
-  let TOTAL_STAFF = 15; // 입력 대상 인원 수 (하단 "입력 정원 수정" 버튼으로 언제든 변경 가능)
+  const TOTAL_STAFF = 15; // 입력 대상 인원 수 — 변경 시 이 숫자만 고치면 됩니다
   const CUTOFF_TIME = '17:00';
   const DRIVERS_BASE = ['Kaillash','Devender','Tarun','Amit'];
   const ANCHOR_MONDAY = new Date('2026-07-20T00:00:00');
@@ -892,7 +877,6 @@
 
   const boardDocRef = db.collection('shuttle').doc('board');
   const leavesDocRef = db.collection('shuttle').doc('leaves');
-  const settingsDocRef = db.collection('shuttle').doc('settings');
 
   async function saveBoard(){
     try{ await boardDocRef.set(data); }
@@ -900,10 +884,6 @@
   }
   async function saveLeaves(){
     try{ await leavesDocRef.set({ leaves }); }
-    catch(e){ console.error('저장 실패', e); }
-  }
-  async function saveSettings(){
-    try{ await settingsDocRef.set({ total: TOTAL_STAFF }); }
     catch(e){ console.error('저장 실패', e); }
   }
 
@@ -919,9 +899,8 @@
     return false;
   }
 
-  let boardReady = false, leavesReady = false, settingsReady = false, pendingRerender = false;
+  let boardReady = false, leavesReady = false, pendingRerender = false;
   function tryRender(){
-    // 정원 설정(settings)은 화면 표시에 필수가 아니므로, 탑승 명단/미이용 정보만 준비되면 바로 렌더링합니다.
     if(!boardReady || !leavesReady) return;
     if(shouldPauseRefresh()){ pendingRerender = true; return; }
     pendingRerender = false;
@@ -960,22 +939,6 @@
       leavesReady = true;
       tryRender();
     }, (err) => console.error('미이용 구독 오류', err));
-
-    // 정원 설정은 자주 바뀌지 않는 값이라, 실시간 구독 대신 1회성 조회만 사용합니다.
-    // (실시간 리스너를 하나 더 열면 연결 부하가 늘어 로딩이 느려질 수 있어 이 방식이 더 가볍고 빠릅니다)
-    settingsDocRef.get().then((snap) => {
-      if(snap.exists && typeof snap.data().total === 'number' && snap.data().total > 0){
-        TOTAL_STAFF = snap.data().total;
-      } else {
-        saveSettings();
-      }
-      settingsReady = true;
-      tryRender();
-    }).catch((err) => {
-      console.error('설정 조회 오류', err);
-      settingsReady = true;
-      tryRender();
-    });
   }
 
   function totalBooked(){ return data.cars.reduce((s,c)=>s+c.passengers.length,0); }
@@ -1164,32 +1127,12 @@
         ${data.cars.map(car => renderCar(car, availableRoster)).join('')}
       </div>
       <div class="foot-note">탑승 명단은 매일 자동 초기화됩니다</div>
-
-      <div class="capacity-edit-wrap">
-        <button class="capacity-edit-btn" id="capacityEditBtn">입력 정원 수정</button>
-      </div>
     `;
 
     document.getElementById('statusBtn').onclick = () => {
       statusOpen = !statusOpen;
       render();
     };
-
-    const capacityBtn = document.getElementById('capacityEditBtn');
-    if(capacityBtn){
-      capacityBtn.onclick = async () => {
-        const input = window.prompt(`입력 대상 인원 수를 입력하세요 (현재 ${TOTAL_STAFF}명)`, TOTAL_STAFF);
-        if(input === null) return;
-        const n = parseInt(input, 10);
-        if(!Number.isFinite(n) || n <= 0){
-          alert('올바른 숫자를 입력해 주세요.');
-          return;
-        }
-        TOTAL_STAFF = n;
-        await saveSettings();
-        render();
-      };
-    }
 
     todayNU.forEach(n => {
       const btn = document.getElementById('delnu-'+n.id);
