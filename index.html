@@ -656,13 +656,6 @@
     font-size:11px;
     margin-top:18px;
   }
-  .loading{
-    color:var(--muted);
-    font-size:13px;
-    padding:40px 0;
-    text-align:center;
-  }
-
   .summary-title{
     font-size:14px;
     font-weight:700;
@@ -730,7 +723,40 @@
 
 </style>
 
-<div id="root" class="board"><div class="loading">불러오는 중...</div></div>
+<div id="root" class="board">
+  <div class="system-title-bar">
+    <div class="system-title">주재원 퇴근 차량 게시판</div>
+    <div class="notice">
+      <span class="notice-label">⏰ 오늘 퇴근 차량 입력 마감</span>
+      <span class="notice-time">17:00</span>
+    </div>
+  </div>
+  <div class="head">
+    <div>
+      <h1>퇴근 차량 입력 현황</h1>
+      <div class="sub">&nbsp;</div>
+    </div>
+    <div style="display:flex; align-items:flex-end;">
+      <div class="stat">
+        <div class="num">&nbsp;</div>
+        <div class="label">전체 입력 완료율</div>
+        <div class="progress-wrap"><div class="progress-bar" style="width:0%;"></div></div>
+      </div>
+      <button class="reset-btn" disabled>입력 현황 보기</button>
+    </div>
+  </div>
+  <div class="section-label">미이용 등록 (출장 · 휴가 · 자차 등, 기간 지정 가능)</div>
+  <div class="nonuser-card">
+    <div class="nonuser-empty">불러오는 중...</div>
+  </div>
+  <div class="section-label">차량별 탑승 명단</div>
+  <div class="grid">
+    <div class="car"><div class="car-top"><div class="car-name">1호차</div><div class="car-time">17:40</div></div><div class="car-driver">기사 확인 중</div></div>
+    <div class="car"><div class="car-top"><div class="car-name">2호차</div><div class="car-time">18:30</div></div><div class="car-driver">기사 확인 중</div></div>
+    <div class="car"><div class="car-top"><div class="car-name">3호차</div><div class="car-time">19:00</div></div><div class="car-driver">기사 확인 중</div></div>
+    <div class="car"><div class="car-top"><div class="car-name">4호차</div><div class="car-time">20:00</div></div><div class="car-driver">기사 확인 중</div></div>
+  </div>
+</div>
 
 <script>
 (function(){
