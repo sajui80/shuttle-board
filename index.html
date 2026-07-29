@@ -299,39 +299,6 @@
     padding:0 2px;
   }
   .nonuser-chip button:hover{ color:var(--rose); }
-  .confirm-bar{
-    display:flex;
-    align-items:center;
-    gap:10px;
-    flex-wrap:wrap;
-    background:rgba(225,29,72,0.07);
-    border:1px solid rgba(225,29,72,0.35);
-    color:#9f1239;
-    font-size:13px;
-    font-weight:600;
-    padding:12px 14px;
-    border-radius:10px;
-    margin-bottom:22px;
-  }
-  .confirm-bar span{ flex:1; min-width:180px; }
-  .confirm-bar button{
-    border-radius:8px;
-    padding:7px 14px;
-    font-size:12.5px;
-    font-weight:700;
-    cursor:pointer;
-    flex-shrink:0;
-  }
-  .confirm-yes{
-    background:var(--rose);
-    border:1px solid var(--rose);
-    color:#fff;
-  }
-  .confirm-no{
-    background:var(--panel);
-    border:1px solid var(--line);
-    color:var(--muted);
-  }
   .nonuser-chip.confirming{
     background:rgba(225,29,72,0.07);
     border-color:rgba(225,29,72,0.35);
@@ -696,49 +663,11 @@
     text-align:center;
   }
 
-  .summary-card{
-    background:var(--panel);
-    border:1px solid var(--amber);
-    border-radius:14px;
-    padding:18px;
-    margin-top:26px;
-  }
   .summary-title{
     font-size:14px;
     font-weight:700;
     color:var(--amber);
     margin-bottom:14px;
-  }
-  .summary-row{
-    display:flex;
-    align-items:center;
-    gap:10px;
-    margin-bottom:8px;
-    font-size:12.5px;
-  }
-  .summary-row .s-label{
-    width:100px;
-    flex-shrink:0;
-    color:var(--muted);
-  }
-  .summary-row .s-bar-wrap{
-    flex:1;
-    height:8px;
-    background:var(--panel-2);
-    border-radius:4px;
-    overflow:hidden;
-  }
-  .summary-row .s-bar{
-    height:100%;
-    background:var(--amber);
-    border-radius:4px;
-  }
-  .summary-row .s-count{
-    width:44px;
-    text-align:right;
-    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
-    color:var(--text);
-    flex-shrink:0;
   }
   .summary-divider{
     border:none;
@@ -798,6 +727,21 @@
     border-radius:12px;
     margin:2px 4px 2px 0;
   }
+  .capacity-edit-wrap{
+    display:flex;
+    justify-content:flex-end;
+    margin-top:12px;
+  }
+  .capacity-edit-btn{
+    background:none;
+    border:none;
+    color:var(--muted);
+    font-size:11px;
+    text-decoration:underline;
+    cursor:pointer;
+    padding:4px 6px;
+  }
+  .capacity-edit-btn:hover{ color:var(--amber); }
 
 </style>
 
@@ -809,7 +753,7 @@
   let data = null;
   let leaves = [];
   let statusOpen = false;
-  let pendingConfirm = null; // {type:'reset'} | {type:'leave', id}
+  let pendingConfirm = null; // {type:'leave', id}
 
   const ROSTER = ['김두환','김병균','김수완','김승용','김지구','김진보','김휴목','민유석','박형배','성경욱','신정훈','윤상근','조규동','정상준','최정갑'];
 
@@ -820,7 +764,7 @@
     { idx:3, label:'4호차', time:'20:00' }
   ];
   const CAPACITY = 5;
-  const TOTAL_STAFF = 15; // 입력 대상 인원 수 — 변경 시 이 숫자만 고치면 됩니다
+  let TOTAL_STAFF = 15; // 입력 대상 인원 수 (하단 "입력 정원 수정" 버튼으로 언제든 변경 가능)
   const CUTOFF_TIME = '17:00';
   const DRIVERS_BASE = ['Kaillash','Devender','Tarun','Amit'];
   const ANCHOR_MONDAY = new Date('2026-07-20T00:00:00');
@@ -956,6 +900,7 @@
 
   const boardDocRef = db.collection('shuttle').doc('board');
   const leavesDocRef = db.collection('shuttle').doc('leaves');
+  const settingsDocRef = db.collection('shuttle').doc('settings');
 
   async function saveBoard(){
     try{ await boardDocRef.set(data); }
@@ -963,6 +908,10 @@
   }
   async function saveLeaves(){
     try{ await leavesDocRef.set({ leaves }); }
+    catch(e){ console.error('저장 실패', e); }
+  }
+  async function saveSettings(){
+    try{ await settingsDocRef.set({ total: TOTAL_STAFF }); }
     catch(e){ console.error('저장 실패', e); }
   }
 
@@ -978,8 +927,9 @@
     return false;
   }
 
-  let boardReady = false, leavesReady = false, pendingRerender = false;
+  let boardReady = false, leavesReady = false, settingsReady = false, pendingRerender = false;
   function tryRender(){
+    // 정원 설정(settings)은 화면 표시에 필수가 아니므로, 탑승 명단/미이용 정보만 준비되면 바로 렌더링합니다.
     if(!boardReady || !leavesReady) return;
     if(shouldPauseRefresh()){ pendingRerender = true; return; }
     pendingRerender = false;
@@ -1018,6 +968,21 @@
       leavesReady = true;
       tryRender();
     }, (err) => console.error('미이용 구독 오류', err));
+
+    settingsDocRef.onSnapshot((snap) => {
+      if(snap.exists && typeof snap.data().total === 'number' && snap.data().total > 0){
+        TOTAL_STAFF = snap.data().total;
+      } else {
+        saveSettings();
+      }
+      settingsReady = true;
+      tryRender();
+    }, (err) => {
+      // 설정 문서 접근에 실패해도(권한 등) 화면 전체가 멈추지 않도록 기본값으로 계속 진행합니다.
+      console.error('설정 구독 오류', err);
+      settingsReady = true;
+      tryRender();
+    });
   }
 
   function totalBooked(){ return data.cars.reduce((s,c)=>s+c.passengers.length,0); }
@@ -1059,6 +1024,17 @@
     if(!m || !day) return d;
     return `${m}월 ${day}일`;
   }
+  function dateLabelText(d){
+    return `📅 ${fmtDateShort(d)}`;
+  }
+  // 클릭/탭한 곳이 어디든 날짜 입력창의 네이티브 달력이 뜨도록 강제로 열어줍니다
+  function openDatePicker(input){
+    if(!input) return;
+    try{
+      if(typeof input.showPicker === 'function'){ input.showPicker(); }
+      else { input.focus(); }
+    } catch(e){ input.focus(); }
+  }
 
   // 재렌더링으로 입력 중이던 값이 사라지지 않도록 상태를 저장/복원
   function captureFormState(){
@@ -1096,12 +1072,12 @@
     if(nuStart && st.nuStart){
       nuStart.value = st.nuStart;
       const lbl = document.getElementById('nonuserStartLabel');
-      if(lbl) lbl.textContent = fmtDateShort(nuStart.value);
+      if(lbl) lbl.textContent = dateLabelText(nuStart.value);
     }
     if(nuEnd && st.nuEnd){
       nuEnd.value = st.nuEnd;
       const lbl = document.getElementById('nonuserEndLabel');
-      if(lbl) lbl.textContent = fmtDateShort(nuEnd.value);
+      if(lbl) lbl.textContent = dateLabelText(nuEnd.value);
     }
   }
 
@@ -1143,17 +1119,8 @@
             `}
           </div>
           <button class="reset-btn" id="statusBtn">${statusOpen ? '입력 현황 닫기' : '입력 현황 보기'}</button>
-          <button class="reset-btn" id="resetBtn">탑승 명단 초기화</button>
         </div>
       </div>
-
-      ${pendingConfirm && pendingConfirm.type === 'reset' ? `
-        <div class="confirm-bar">
-          <span>정말 오늘 탑승 명단을 전체 초기화하시겠습니까? 되돌릴 수 없습니다. (미이용 등록은 유지됩니다)</span>
-          <button class="confirm-yes" id="resetYes">초기화</button>
-          <button class="confirm-no" id="resetNo">취소</button>
-        </div>
-      ` : ''}
 
       ${statusOpen ? renderStatusPanel() : ''}
 
@@ -1187,13 +1154,13 @@
               ${NONUSE_REASONS.map(r => `<option value="${r}">${reasonIcon(r)} ${r}</option>`).join('')}
             </select>
             <span class="date-wrap">
-              <span class="date-label" id="nonuserStartLabel">${fmtDateShort(todayStr())}</span>
-              <input type="date" id="nonuserStart" value="${todayStr()}" title="시작일">
+              <span class="date-label" id="nonuserStartLabel">${dateLabelText(todayStr())}</span>
+              <input type="date" id="nonuserStart" value="${todayStr()}" title="시작일 (탭하면 달력이 열립니다)">
             </span>
             <span class="date-sep">~</span>
             <span class="date-wrap">
-              <span class="date-label" id="nonuserEndLabel">${fmtDateShort(todayStr())}</span>
-              <input type="date" id="nonuserEnd" value="${todayStr()}" title="종료일">
+              <span class="date-label" id="nonuserEndLabel">${dateLabelText(todayStr())}</span>
+              <input type="date" id="nonuserEnd" value="${todayStr()}" title="종료일 (탭하면 달력이 열립니다)">
             </span>
           </div>
         </div>
@@ -1204,7 +1171,10 @@
         ${data.cars.map(car => renderCar(car, availableRoster)).join('')}
       </div>
       <div class="foot-note">탑승 명단은 매일 자동 초기화됩니다</div>
-      ${isPastCutoff() ? renderSummary(entered, pct, todayNU) : ''}
+
+      <div class="capacity-edit-wrap">
+        <button class="capacity-edit-btn" id="capacityEditBtn">입력 정원 수정</button>
+      </div>
     `;
 
     document.getElementById('statusBtn').onclick = () => {
@@ -1212,20 +1182,18 @@
       render();
     };
 
-    document.getElementById('resetBtn').onclick = () => {
-      pendingConfirm = { type:'reset' };
-      render();
-    };
-    const resetYes = document.getElementById('resetYes');
-    if(resetYes){
-      resetYes.onclick = async () => {
-        pendingConfirm = null;
-        data = defaultData();
-        await saveBoard();
-        render();
-      };
-      document.getElementById('resetNo').onclick = () => {
-        pendingConfirm = null;
+    const capacityBtn = document.getElementById('capacityEditBtn');
+    if(capacityBtn){
+      capacityBtn.onclick = async () => {
+        const input = window.prompt(`입력 대상 인원 수를 입력하세요 (현재 ${TOTAL_STAFF}명)`, TOTAL_STAFF);
+        if(input === null) return;
+        const n = parseInt(input, 10);
+        if(!Number.isFinite(n) || n <= 0){
+          alert('올바른 숫자를 입력해 주세요.');
+          return;
+        }
+        TOTAL_STAFF = n;
+        await saveSettings();
         render();
       };
     }
@@ -1260,14 +1228,18 @@
     if(nuStartInput){
       nuStartInput.oninput = () => {
         const lbl = document.getElementById('nonuserStartLabel');
-        if(lbl) lbl.textContent = fmtDateShort(nuStartInput.value);
+        if(lbl) lbl.textContent = dateLabelText(nuStartInput.value);
       };
+      nuStartInput.onclick = () => openDatePicker(nuStartInput);
+      nuStartInput.onfocus = () => openDatePicker(nuStartInput);
     }
     if(nuEndInput){
       nuEndInput.oninput = () => {
         const lbl = document.getElementById('nonuserEndLabel');
-        if(lbl) lbl.textContent = fmtDateShort(nuEndInput.value);
+        if(lbl) lbl.textContent = dateLabelText(nuEndInput.value);
       };
+      nuEndInput.onclick = () => openDatePicker(nuEndInput);
+      nuEndInput.onfocus = () => openDatePicker(nuEndInput);
     }
     document.getElementById('nonuserAddBtn').onclick = async () => {
       const name = nuNameSel.value.trim();
@@ -1457,49 +1429,6 @@
           <div class="status-panel-slot">미입력 (${missing.length}명)</div>
           <div class="status-panel-names">${missingHtml}</div>
         </div>
-      </div>
-    `;
-  }
-
-  function renderSummary(entered, pct, todayNU){
-    const maxCount = CAPACITY;
-    const carRows = data.cars.map(car => {
-      const slot = SLOTS[car.id];
-      const c = car.passengers.length;
-      const w = Math.round((c / maxCount) * 100);
-      return `
-        <div class="summary-row">
-          <div class="s-label">${slot.label} (${slot.time})</div>
-          <div class="s-bar-wrap"><div class="s-bar" style="width:${w}%;"></div></div>
-          <div class="s-count">${c}/${maxCount}</div>
-        </div>
-      `;
-    }).join('');
-
-    const reasonCounts = {};
-    todayNU.forEach(n => { reasonCounts[n.reason] = (reasonCounts[n.reason]||0) + 1; });
-    const reasonKeys = Object.keys(reasonCounts);
-    const maxReason = Math.max(1, ...reasonKeys.map(k => reasonCounts[k]));
-    const reasonRows = reasonKeys.length === 0
-      ? '<div class="summary-note">오늘 미이용 등록 없음</div>'
-      : reasonKeys.map(k => `
-          <div class="summary-row">
-            <div class="s-label">${reasonIcon(k)} ${k}</div>
-            <div class="s-bar-wrap"><div class="s-bar" style="width:${Math.round((reasonCounts[k]/maxReason)*100)}%;"></div></div>
-            <div class="s-count">${reasonCounts[k]}명</div>
-          </div>
-        `).join('');
-
-    const missing = TOTAL_STAFF - entered;
-
-    return `
-      <div class="summary-card">
-        <div class="summary-title">🕔 17시 마감 요약</div>
-        ${carRows}
-        <hr class="summary-divider">
-        ${reasonRows}
-        <hr class="summary-divider">
-        <div class="summary-note">전체 ${TOTAL_STAFF}명 중 ${entered}명 입력 완료 (${pct}%)${missing > 0 ? ` · 미입력 ${missing}명` : ' · 전원 입력 완료'}</div>
       </div>
     `;
   }
