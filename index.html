@@ -875,6 +875,16 @@
   // 연결 방식을 자동으로 빠르게 감지하도록 설정합니다.
   try{ db.settings({ experimentalAutoDetectLongPolling: true }); } catch(e){ console.warn('firestore settings 적용 실패', e); }
 
+  // 마지막으로 불러온 데이터를 기기에 캐싱해서, 다음 접속부터는 "불러오는 중" 없이
+  // 캐시된 화면이 즉시 뜨고 백그라운드에서 최신 데이터로 갱신되도록 합니다.
+  // (여러 탭을 동시에 켜두면 캐시가 적용되지 않을 수 있지만, 평소 한 탭으로 쓰는
+  //  일반적인 사용 환경에서는 문제 없이 즉시 로딩됩니다)
+  try{
+    db.enablePersistence().catch((err) => {
+      console.warn('오프라인 캐시 사용 불가:', err && err.code);
+    });
+  } catch(e){ console.warn('enablePersistence 호출 실패', e); }
+
   const boardDocRef = db.collection('shuttle').doc('board');
   const leavesDocRef = db.collection('shuttle').doc('leaves');
 
